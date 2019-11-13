@@ -1,5 +1,5 @@
-/* Copyright 2018 Sam Bingner All Rights Reserved
-	 */
+/* Copyright 2018-2019 Sam Bingner All Rights Reserved
+ */
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -49,6 +49,19 @@ bool snapshot_check(int dirfd, const char *name)
     }
     free(snapshots);
     return false;
+}
+
+const char *first_snapshot(int dirfd)
+{
+    char *snapshot = NULL;
+
+    const char **snapshots = snapshot_list(dirfd);
+    if (!snapshots) return NULL;
+    if (snapshots[0]) {
+        snapshot = strdup(snapshots[0]);
+    }
+    free(snapshots);
+    return snapshot;
 }
 
 const char **snapshot_list(int dirfd)
@@ -231,6 +244,16 @@ int fd=-1;
     return [[snapshots copy] autorelease];
 }
 
+-(NSString*)firstSnapshot {
+    const char *snapName = first_snapshot(fd);
+    if (!snapName) {
+        return nil;
+    }
+
+    NSString *snap = [[NSString alloc] initWithBytesNoCopy:(char*)snapName length:strlen(snapName) encoding:NSUTF8StringEncoding freeWhenDone:YES];
+    return [snap autorelease];
+}
+
 -(BOOL)create:(NSString*)name {
     return fs_snapshot_create(fd, name.UTF8String, 0) == ERR_SUCCESS;
 }
@@ -243,8 +266,24 @@ int fd=-1;
     return fs_snapshot_rename(fd, name.UTF8String, newName.UTF8String, 0) == ERR_SUCCESS;
 }
 
+-(BOOL)renameToStock {
+    NSString *firstSnap = [self firstSnapshot];
+    NSLog(@"firstSnap: %@", firstSnap);
+    if (!firstSnap) return NO;
+
+    NSString *systemSnap = [SBSnappy systemSnapshot];
+    NSLog(@"systemSnap: %@", systemSnap);
+    if (!systemSnap) return NO;
+
+    return [self rename:firstSnap to:systemSnap];
+}
+
+-(BOOL)mount:(NSString*)name to:(NSString*)path withFlags:(uint32_t)flags {
+    return fs_snapshot_mount(fd, path.UTF8String, name.UTF8String, flags) == ERR_SUCCESS;
+}
+
 -(BOOL)mount:(NSString*)name to:(NSString*)path {
-    return fs_snapshot_mount(fd, path.UTF8String, name.UTF8String, 0) == ERR_SUCCESS;
+    return [self mount:name to:path withFlags:0];
 }
 
 -(BOOL)revert:(NSString*)name {
